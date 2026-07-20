@@ -2,11 +2,11 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import fs from "node:fs/promises";
 import * as dotenv from "dotenv";
+import CryptoJS from "crypto-js";
 import { Client, isFullPage } from "@notionhq/client";
 import type { PageObjectResponse } from "@notionhq/client/build/src/api-endpoints";
-import { toVideoEmbed } from "./lib/video-embed.ts";
-import { toMapEmbed } from "./lib/map-embed.ts";
-import type { TripData, TripEvent } from "../src/types/trip.ts";
+import { geocode } from "./lib/geocode.ts";
+import type { TripComment, TripData, TripEvent } from "../src/types/trip.ts";
 
 dotenv.config();
 
@@ -17,13 +17,21 @@ const PROPERTY_NAMES = {
   title: "タイトル",
   date: "日時",
   memo: "メモ",
-  map: "場所 / マップ",
+  shopLink: "お店リンク",
   photos: "写真",
-  video: "動画URL",
 } as const;
 
+// 「全体の感想」データベースのプロパティ名
+const COMMENTS_DB_PROPERTY_NAMES = {
+  author: "投稿者",
+  text: "コメント",
+  photos: "写真",
+} as const;
+
+const FAMILY_MEMBERS = ["修", "美", "悠", "紗"] as const;
+
 const OUTPUT_DIR_IMAGES = path.resolve(__dirname, "../public/images");
-const OUTPUT_DATA_FILE = path.resolve(__dirname, "../src/data/trip-data.json");
+const OUTPUT_DATA_FILE = path.resolve(__dirname, "../public/data.json");
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -36,14 +44,18 @@ function requireEnv(name: string): string {
   return value;
 }
 
-async function queryAllPages(notion: Client, databaseId: string): Promise<PageObjectResponse[]> {
+async function queryAllPages(
+  notion: Client,
+  databaseId: string,
+  sorts: Parameters<Client["databases"]["query"]>[0]["sorts"],
+): Promise<PageObjectResponse[]> {
   const pages: PageObjectResponse[] = [];
   let cursor: string | undefined;
 
   do {
     const response = await notion.databases.query({
       database_id: databaseId,
-      sorts: [{ property: PROPERTY_NAMES.date, direction: "ascending" }],
+      sorts,
       start_cursor: cursor,
     });
     for (const result of response.results) {
@@ -102,13 +114,27 @@ function extractUrl(page: PageObjectResponse, propertyName: string): string | un
   return undefined;
 }
 
+function extractComments(page: PageObjectResponse): TripComment[] {
+  const comments: TripComment[] = [];
+  for (const name of FAMILY_MEMBERS) {
+    const prop = page.properties[`コメント(${name})`];
+    if (prop?.type === "rich_text") {
+      const text = getPlainText(prop.rich_text).trim();
+      if (text) {
+        comments.push({ name, text, photos: [] });
+      }
+    }
+  }
+  return comments;
+}
+
 interface NotionFileEntry {
   name: string;
   url: string;
 }
 
-function extractFileEntries(page: PageObjectResponse): NotionFileEntry[] {
-  const prop = page.properties[PROPERTY_NAMES.photos];
+function extractFileEntries(page: PageObjectResponse, propertyName: string): NotionFileEntry[] {
+  const prop = page.properties[propertyName];
   if (prop?.type !== "files") {
     return [];
   }
@@ -148,11 +174,14 @@ async function downloadImage(url: string, destPath: string): Promise<boolean> {
   }
 }
 
-async function downloadPhotos(pageId: string, entries: NotionFileEntry[]): Promise<string[]> {
+async function downloadPhotos(
+  idPrefix: string,
+  entries: NotionFileEntry[],
+): Promise<string[]> {
   const photoPaths: string[] = [];
   for (const entry of entries) {
     const ext = guessExtension(entry.url, entry.name);
-    const filename = `${pageId}-${photoPaths.length}${ext}`;
+    const filename = `${idPrefix}-${photoPaths.length}${ext}`;
     const ok = await downloadImage(entry.url, path.join(OUTPUT_DIR_IMAGES, filename));
     if (ok) {
       photoPaths.push(`images/${filename}`);
@@ -161,20 +190,48 @@ async function downloadPhotos(pageId: string, entries: NotionFileEntry[]): Promi
   return photoPaths;
 }
 
+async function fetchOverallComments(notion: Client, commentsDatabaseId: string): Promise<TripComment[]> {
+  const pages = await queryAllPages(notion, commentsDatabaseId, [
+    { timestamp: "created_time", direction: "ascending" },
+  ]);
+
+  const comments: TripComment[] = [];
+  for (const page of pages) {
+    const authorProp = page.properties[COMMENTS_DB_PROPERTY_NAMES.author];
+    const textProp = page.properties[COMMENTS_DB_PROPERTY_NAMES.text];
+
+    const name = authorProp?.type === "select" ? authorProp.select?.name : undefined;
+    const text = textProp?.type === "rich_text" ? getPlainText(textProp.rich_text).trim() : "";
+
+    const fileEntries = extractFileEntries(page, COMMENTS_DB_PROPERTY_NAMES.photos);
+    const photos = await downloadPhotos(`comment-${page.id}`, fileEntries);
+
+    if (!name || (!text && photos.length === 0)) {
+      console.warn(`[fetch-notion] 全体感想: 投稿者、または本文・写真の両方が空のためスキップ (page: ${page.id})`);
+      continue;
+    }
+    comments.push({ name, text, photos });
+  }
+  return comments;
+}
+
 async function main() {
   const apiKey = requireEnv("NOTION_API_KEY");
   const databaseId = requireEnv("NOTION_DATABASE_ID");
+  const commentsDatabaseId = requireEnv("NOTION_COMMENTS_DATABASE_ID");
+  const sitePassword = requireEnv("SITE_PASSWORD");
   const notion = new Client({ auth: apiKey });
 
   await fs.mkdir(OUTPUT_DIR_IMAGES, { recursive: true });
   await fs.mkdir(path.dirname(OUTPUT_DATA_FILE), { recursive: true });
 
   console.log("[fetch-notion] Notionデータベースを取得中...");
-  const [tripTitle, pages] = await Promise.all([
+  const [tripTitle, pages, overallComments] = await Promise.all([
     fetchDatabaseTitle(notion, databaseId),
-    queryAllPages(notion, databaseId),
+    queryAllPages(notion, databaseId, [{ property: PROPERTY_NAMES.date, direction: "ascending" }]),
+    fetchOverallComments(notion, commentsDatabaseId),
   ]);
-  console.log(`[fetch-notion] ${pages.length} 件のページを取得しました`);
+  console.log(`[fetch-notion] ${pages.length} 件のページ、${overallComments.length} 件の全体感想を取得しました`);
 
   const events: TripEvent[] = [];
   let warningCount = 0;
@@ -189,17 +246,18 @@ async function main() {
     }
 
     const memo = extractMemo(page);
-    const mapUrl = extractUrl(page, PROPERTY_NAMES.map);
-    const videoUrl = extractUrl(page, PROPERTY_NAMES.video);
+    const shopUrl = extractUrl(page, PROPERTY_NAMES.shopLink);
+    const comments = extractComments(page);
 
-    const fileEntries = extractFileEntries(page);
+    const fileEntries = extractFileEntries(page, PROPERTY_NAMES.photos);
     const photos = await downloadPhotos(page.id, fileEntries);
     if (photos.length < fileEntries.length) {
       warningCount += 1;
     }
 
-    const mapEmbedUrl = await toMapEmbed(mapUrl);
-    const { embedUrl: videoEmbedUrl, type: videoEmbedType } = toVideoEmbed(videoUrl);
+    // 地図のピンはお店の名前(タイトル)をそのままジオコーディングして求める。
+    // 専用のURLプロパティは不要な代わり、同名の別の場所がある場合は誤爆する可能性がある。
+    const coords = await geocode(title);
 
     events.push({
       id: page.id,
@@ -207,12 +265,10 @@ async function main() {
       dateISO,
       hasTime,
       memo,
-      mapUrl,
-      mapEmbedUrl,
+      shopUrl,
+      comments,
       photos,
-      videoUrl,
-      videoEmbedUrl,
-      videoEmbedType,
+      coords,
     });
   }
 
@@ -225,12 +281,16 @@ async function main() {
     heroImage: heroEvent ? heroEvent.photos[0] : null,
     generatedAt: new Date().toISOString(),
     events,
+    overallComments,
   };
 
-  await fs.writeFile(OUTPUT_DATA_FILE, JSON.stringify(tripData, null, 2), "utf-8");
+  // dataは暗号化してからpublic/配下に書き出す。復号鍵(SITE_PASSWORD)はビルドログにも
+  // 出力に含めない。平文JSONはディスクにも残さずメモリ上でのみ扱う。
+  const ciphertext = CryptoJS.AES.encrypt(JSON.stringify(tripData), sitePassword).toString();
+  await fs.writeFile(OUTPUT_DATA_FILE, JSON.stringify({ ciphertext }), "utf-8");
 
   console.log(`[fetch-notion] 完了: イベント${events.length}件、警告${warningCount}件`);
-  console.log(`[fetch-notion] 出力先: ${OUTPUT_DATA_FILE}`);
+  console.log(`[fetch-notion] 出力先: ${OUTPUT_DATA_FILE}（暗号化済み）`);
 }
 
 main().catch((err) => {

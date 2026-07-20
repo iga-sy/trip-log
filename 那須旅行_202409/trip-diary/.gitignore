@@ -3,4 +3,5 @@ dist/
 .env
 public/images/*
 !public/images/.gitkeep
-src/data/trip-data.json
+public/data.json
+*.tsbuildinfo

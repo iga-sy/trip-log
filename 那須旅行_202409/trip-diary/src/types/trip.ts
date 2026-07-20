@@ -1,15 +1,19 @@
+export interface TripComment {
+  name: string;
+  text: string;
+  photos: string[];
+}
+
 export interface TripEvent {
   id: string;
   title: string;
   dateISO: string;
   hasTime: boolean;
   memo: string;
-  mapUrl?: string;
-  mapEmbedUrl: string | null;
+  shopUrl?: string;
+  comments: TripComment[];
   photos: string[];
-  videoUrl?: string;
-  videoEmbedUrl: string | null;
-  videoEmbedType: "youtube" | "drive" | "unknown";
+  coords: { lat: number; lng: number } | null;
 }
 
 export interface TripData {
@@ -17,4 +21,5 @@ export interface TripData {
   heroImage: string | null;
   generatedAt: string;
   events: TripEvent[];
+  overallComments: TripComment[];
 }

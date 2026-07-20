@@ -1,0 +1,102 @@
+import { requireEnv } from "../lib/env.js";
+import { verifyLineSignature } from "../lib/line-signature.js";
+import {
+  fetchDisplayName,
+  fetchImageContent,
+  isImageMessage,
+  isMessageEvent,
+  isTextMessage,
+  isUserSource,
+  type LineMessageEvent,
+  type LineWebhookBody,
+} from "../lib/line-api.js";
+import { uploadFileToNotion, createPage, type NotionFileUpload } from "../lib/notion-write.js";
+import { buildCommentProperties } from "../lib/build-properties.js";
+
+export async function POST(request: Request): Promise<Response> {
+  const lineChannelSecret = requireEnv("LINE_CHANNEL_SECRET");
+  const lineChannelAccessToken = requireEnv("LINE_CHANNEL_ACCESS_TOKEN");
+  const notionApiKey = requireEnv("NOTION_API_KEY");
+  const notionDatabaseId = requireEnv("NOTION_COMMENTS_DATABASE_ID");
+
+  const rawBody = await request.text();
+  const signature = request.headers.get("x-line-signature");
+
+  if (!verifyLineSignature(rawBody, signature, lineChannelSecret)) {
+    console.error("LINE署名検証に失敗しました");
+    return new Response(null, { status: 401 });
+  }
+
+  let body: LineWebhookBody;
+  try {
+    body = JSON.parse(rawBody) as LineWebhookBody;
+  } catch {
+    return new Response(null, { status: 400 });
+  }
+
+  const byUser = new Map<string, LineMessageEvent[]>();
+  for (const event of body.events ?? []) {
+    if (!isMessageEvent(event)) continue;
+    if (!isUserSource(event.source)) continue;
+    if (!isTextMessage(event.message) && !isImageMessage(event.message)) continue;
+
+    const arr = byUser.get(event.source.userId) ?? [];
+    arr.push(event);
+    byUser.set(event.source.userId, arr);
+  }
+
+  for (const [userId, events] of byUser) {
+    try {
+      await processUserEvents(userId, events, {
+        lineChannelAccessToken,
+        notionApiKey,
+        notionDatabaseId,
+      });
+    } catch (err) {
+      console.error(`ユーザー ${userId} のイベント処理に失敗しました:`, err);
+    }
+  }
+
+  return new Response(null, { status: 200 });
+}
+
+interface ProcessContext {
+  lineChannelAccessToken: string;
+  notionApiKey: string;
+  notionDatabaseId: string;
+}
+
+async function processUserEvents(
+  userId: string,
+  events: LineMessageEvent[],
+  ctx: ProcessContext,
+): Promise<void> {
+  const displayName = await fetchDisplayName(userId, ctx.lineChannelAccessToken);
+
+  const textEvent = events.find((e) => isTextMessage(e.message));
+  const text =
+    textEvent && isTextMessage(textEvent.message) ? textEvent.message.text : "";
+
+  const imageEvents = events.filter((e) => isImageMessage(e.message));
+  const fileUploads: NotionFileUpload[] = [];
+  for (const [index, imageEvent] of imageEvents.entries()) {
+    if (!isImageMessage(imageEvent.message)) continue;
+    const content = await fetchImageContent(imageEvent.message.id, ctx.lineChannelAccessToken);
+    const ext = content.contentType.split("/")[1] ?? "jpg";
+    const filename = `line-${imageEvent.message.id}-${index}.${ext}`;
+    const uploaded = await uploadFileToNotion(
+      ctx.notionApiKey,
+      content.buffer,
+      content.contentType,
+      filename,
+    );
+    fileUploads.push(uploaded);
+  }
+
+  if (!text && fileUploads.length === 0) {
+    return;
+  }
+
+  const properties = buildCommentProperties({ authorName: displayName, text, fileUploads });
+  await createPage(ctx.notionApiKey, ctx.notionDatabaseId, properties);
+}
