@@ -1,7 +1,6 @@
 import { requireEnv } from "../lib/env.js";
 import { verifyLineSignature } from "../lib/line-signature.js";
 import {
-  fetchDisplayName,
   fetchImageContent,
   isImageMessage,
   isMessageEvent,
@@ -13,6 +12,7 @@ import {
 import { uploadFileToNotion, createPage, type NotionFileUpload } from "../lib/notion-write.js";
 import { buildCommentProperties, buildScheduleProperties } from "../lib/build-properties.js";
 import { parseScheduleMessage } from "../lib/parse-schedule.js";
+import { parseNamePrefix } from "../lib/parse-name-prefix.js";
 
 export async function POST(request: Request): Promise<Response> {
   const lineChannelSecret = requireEnv("LINE_CHANNEL_SECRET");
@@ -35,9 +35,6 @@ export async function POST(request: Request): Promise<Response> {
   } catch {
     return new Response(null, { status: 400 });
   }
-
-  // TODO: 原因調査用の一時ログ。原因判明後に削除する。
-  console.log("受信イベント(デバッグ用):", JSON.stringify(body.events));
 
   const byUser = new Map<string, LineMessageEvent[]>();
   for (const event of body.events ?? []) {
@@ -78,8 +75,6 @@ async function processUserEvents(
   events: LineMessageEvent[],
   ctx: ProcessContext,
 ): Promise<void> {
-  const displayName = await fetchDisplayName(userId, ctx.lineChannelAccessToken);
-
   const textEvent = events.find((e) => isTextMessage(e.message));
   const text =
     textEvent && isTextMessage(textEvent.message) ? textEvent.message.text : "";
@@ -114,6 +109,9 @@ async function processUserEvents(
     return;
   }
 
-  const properties = buildCommentProperties({ authorName: displayName, text, fileUploads });
+  // 「予定」でなければ、本文先頭の名前プレフィックス（例:「修: 」）を判定して
+  // 「全体感想」DBに書き込む。プレフィックスが無ければ投稿者未設定のまま記録する。
+  const { name, text: commentText } = parseNamePrefix(text);
+  const properties = buildCommentProperties({ name, text: commentText, fileUploads });
   await createPage(ctx.notionApiKey, ctx.notionCommentsDatabaseId, properties);
 }

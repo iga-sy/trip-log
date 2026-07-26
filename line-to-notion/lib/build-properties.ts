@@ -1,19 +1,24 @@
 import type { NotionFileUpload } from "./notion-write.js";
+import type { FamilyMember } from "./parse-name-prefix.js";
 
+// 実際の「全体感想」データベースの構成に合わせる。
+// title列の名前は「投稿者」だが実際には旅行名などに使う予定のタイトル型プロパティのため、
+// LINEからは常に空のまま作成する。投稿者本人（誰が書いたか）は「マルチセレクト」列に入れる。
 export const COMMENTS_DB_PROPERTY_NAMES = {
-  author: "投稿者",
-  text: "コメント",
+  title: "投稿者",
+  author: "マルチセレクト",
+  text: "メモ",
   photos: "写真",
 } as const;
 
 export interface BuildCommentPropertiesInput {
-  authorName: string;
+  name: FamilyMember | null;
   text: string;
   fileUploads: NotionFileUpload[];
 }
 
 /**
- * LINEから受け取った投稿者名・本文・アップロード済み画像を、
+ * LINEから受け取った名前プレフィックス判定結果・本文・アップロード済み画像を、
  * Notion pages.create の properties オブジェクトに変換する純粋関数。
  * 外部通信を行わないため、モック無しで単体テストできる。
  */
@@ -21,7 +26,10 @@ export function buildCommentProperties(
   input: BuildCommentPropertiesInput,
 ): Record<string, unknown> {
   const properties: Record<string, unknown> = {
-    [COMMENTS_DB_PROPERTY_NAMES.author]: { select: { name: input.authorName } },
+    [COMMENTS_DB_PROPERTY_NAMES.title]: { title: [] },
+    [COMMENTS_DB_PROPERTY_NAMES.author]: {
+      multi_select: input.name ? [{ name: input.name }] : [],
+    },
     [COMMENTS_DB_PROPERTY_NAMES.text]: {
       rich_text: input.text ? [{ text: { content: input.text } }] : [],
     },
