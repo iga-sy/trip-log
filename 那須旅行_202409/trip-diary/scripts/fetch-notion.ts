@@ -87,8 +87,8 @@ function getPlainText(richText: { plain_text: string }[]): string {
 
 function extractTitle(page: PageObjectResponse): string {
   const prop = page.properties[PROPERTY_NAMES.title];
-  if (prop?.type === "title") {
-    return getPlainText(prop.title) || "(無題)";
+  if (prop?.type === "rich_text") {
+    return getPlainText(prop.rich_text) || "(無題)";
   }
   return "(無題)";
 }

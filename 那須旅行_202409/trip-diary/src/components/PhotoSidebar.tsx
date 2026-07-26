@@ -1,14 +1,19 @@
-import type { TripEvent } from "../types/trip";
+import type { TripComment, TripEvent } from "../types/trip";
 import PhotoGrid, { type Photo } from "./PhotoGrid";
 
 interface PhotoSidebarProps {
   events: TripEvent[];
+  overallComments: TripComment[];
 }
 
-export default function PhotoSidebar({ events }: PhotoSidebarProps) {
-  const photos: Photo[] = events.flatMap((event) =>
+export default function PhotoSidebar({ events, overallComments }: PhotoSidebarProps) {
+  const eventPhotos: Photo[] = events.flatMap((event) =>
     event.photos.map((photo) => ({ src: photo, alt: event.title })),
   );
+  const commentPhotos: Photo[] = overallComments.flatMap((comment) =>
+    comment.photos.map((photo) => ({ src: photo, alt: comment.name || "みんなの感想" })),
+  );
+  const photos: Photo[] = [...eventPhotos, ...commentPhotos];
 
   if (photos.length === 0) {
     return null;

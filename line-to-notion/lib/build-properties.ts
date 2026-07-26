@@ -49,8 +49,11 @@ export function buildCommentProperties(
 }
 
 // trip-diaryのfetch-notion.tsのPROPERTY_NAMESと一致させる（「修/美/悠/紗」の各列は
-// LINEからは書き込まないためここには含めない＝プロパティごと送信せず空欄のまま作成される）
+// LINEからは書き込まないためここには含めない＝プロパティごと送信せず空欄のまま作成される）。
+// title列（"旅行名"という名前だが実際には未使用）はNotion上必須のため触らない。
+// スポット名はrich_text型のため、コメントDBの「メモ」と同様の扱いにする。
 export const SCHEDULE_DB_PROPERTY_NAMES = {
+  dbTitle: "旅行名",
   title: "スポット名",
   date: "日時",
   url: "リンク",
@@ -73,7 +76,10 @@ export function buildScheduleProperties(
   input: BuildSchedulePropertiesInput,
 ): Record<string, unknown> {
   const properties: Record<string, unknown> = {
-    [SCHEDULE_DB_PROPERTY_NAMES.title]: { title: [{ text: { content: input.title } }] },
+    [SCHEDULE_DB_PROPERTY_NAMES.dbTitle]: { title: [] },
+    [SCHEDULE_DB_PROPERTY_NAMES.title]: {
+      rich_text: input.title ? [{ text: { content: input.title } }] : [],
+    },
     [SCHEDULE_DB_PROPERTY_NAMES.date]: { date: { start: input.dateISO } },
   };
 
