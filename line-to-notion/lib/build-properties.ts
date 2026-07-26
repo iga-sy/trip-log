@@ -48,12 +48,12 @@ export function buildCommentProperties(
   return properties;
 }
 
-// trip-diaryのfetch-notion.tsのPROPERTY_NAMESと一致させる（「メモ」「コメント(修/美/悠/紗)」は
+// trip-diaryのfetch-notion.tsのPROPERTY_NAMESと一致させる（「修/美/悠/紗」の各列は
 // LINEからは書き込まないためここには含めない＝プロパティごと送信せず空欄のまま作成される）
 export const SCHEDULE_DB_PROPERTY_NAMES = {
-  title: "タイトル",
+  title: "スポット名",
   date: "日時",
-  url: "お店リンク",
+  url: "リンク",
   photos: "写真",
 } as const;
 

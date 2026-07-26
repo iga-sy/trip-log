@@ -13,18 +13,21 @@ dotenv.config();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Notion側のプロパティ名が変わった場合はここだけ直せばよい
+// 「メモ」に相当する列は無いため、memoは常に空文字列として扱う。
 const PROPERTY_NAMES = {
-  title: "タイトル",
+  title: "スポット名",
   date: "日時",
-  memo: "メモ",
-  shopLink: "お店リンク",
+  shopLink: "リンク",
   photos: "写真",
 } as const;
 
 // 「全体の感想」データベースのプロパティ名
+// title列（"投稿者"という名前だが実際には未使用）はNotion上必須のため触らない。
+// 投稿者本人はマルチセレクト列で管理する（LINE経由の代筆投稿のため表示名を使えないので、
+// 本文先頭の名前プレフィックスで判定した結果がここに入る）。
 const COMMENTS_DB_PROPERTY_NAMES = {
-  author: "投稿者",
-  text: "コメント",
+  author: "マルチセレクト",
+  text: "メモ",
   photos: "写真",
 } as const;
 
@@ -98,14 +101,6 @@ function extractDate(page: PageObjectResponse): { dateISO: string; hasTime: bool
   return { dateISO: "", hasTime: false };
 }
 
-function extractMemo(page: PageObjectResponse): string {
-  const prop = page.properties[PROPERTY_NAMES.memo];
-  if (prop?.type === "rich_text") {
-    return getPlainText(prop.rich_text);
-  }
-  return "";
-}
-
 function extractUrl(page: PageObjectResponse, propertyName: string): string | undefined {
   const prop = page.properties[propertyName];
   if (prop?.type === "url" && prop.url) {
@@ -117,7 +112,7 @@ function extractUrl(page: PageObjectResponse, propertyName: string): string | un
 function extractComments(page: PageObjectResponse): TripComment[] {
   const comments: TripComment[] = [];
   for (const name of FAMILY_MEMBERS) {
-    const prop = page.properties[`コメント(${name})`];
+    const prop = page.properties[name];
     if (prop?.type === "rich_text") {
       const text = getPlainText(prop.rich_text).trim();
       if (text) {
@@ -200,7 +195,10 @@ async function fetchOverallComments(notion: Client, commentsDatabaseId: string):
     const authorProp = page.properties[COMMENTS_DB_PROPERTY_NAMES.author];
     const textProp = page.properties[COMMENTS_DB_PROPERTY_NAMES.text];
 
-    const name = authorProp?.type === "select" ? authorProp.select?.name : undefined;
+    const name =
+      authorProp?.type === "multi_select"
+        ? authorProp.multi_select.map((option) => option.name).join(", ")
+        : undefined;
     const text = textProp?.type === "rich_text" ? getPlainText(textProp.rich_text).trim() : "";
 
     const fileEntries = extractFileEntries(page, COMMENTS_DB_PROPERTY_NAMES.photos);
@@ -245,7 +243,7 @@ async function main() {
       continue;
     }
 
-    const memo = extractMemo(page);
+    const memo = ""; // 「メモ」に相当する列が無いため常に空文字列
     const shopUrl = extractUrl(page, PROPERTY_NAMES.shopLink);
     const comments = extractComments(page);
 
