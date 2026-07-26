@@ -15,37 +15,18 @@ import { parseScheduleMessage } from "../lib/parse-schedule.js";
 import { parseNamePrefix } from "../lib/parse-name-prefix.js";
 
 export async function POST(request: Request): Promise<Response> {
-  let lineChannelSecret: string;
-  let lineChannelAccessToken: string;
-  let notionApiKey: string;
-  let notionCommentsDatabaseId: string;
-  let notionScheduleDatabaseId: string;
-  try {
-    lineChannelSecret = requireEnv("LINE_CHANNEL_SECRET");
-    lineChannelAccessToken = requireEnv("LINE_CHANNEL_ACCESS_TOKEN");
-    notionApiKey = requireEnv("NOTION_API_KEY");
-    notionCommentsDatabaseId = requireEnv("NOTION_COMMENTS_DATABASE_ID");
-    notionScheduleDatabaseId = requireEnv("NOTION_DATABASE_ID");
-  } catch (err) {
-    return new Response(null, {
-      status: 500,
-      headers: { "X-Debug-Env-Error": err instanceof Error ? err.message : String(err) },
-    });
-  }
+  const lineChannelSecret = requireEnv("LINE_CHANNEL_SECRET");
+  const lineChannelAccessToken = requireEnv("LINE_CHANNEL_ACCESS_TOKEN");
+  const notionApiKey = requireEnv("NOTION_API_KEY");
+  const notionCommentsDatabaseId = requireEnv("NOTION_COMMENTS_DATABASE_ID");
+  const notionScheduleDatabaseId = requireEnv("NOTION_DATABASE_ID");
 
   const rawBody = await request.text();
   const signature = request.headers.get("x-line-signature");
 
   if (!verifyLineSignature(rawBody, signature, lineChannelSecret)) {
     console.error("LINE署名検証に失敗しました");
-    return new Response(null, {
-      status: 401,
-      headers: {
-        "X-Debug-Deploy": "2026-07-26-c5cbaeb",
-        "X-Debug-Schedule-Db": notionScheduleDatabaseId.slice(0, 8),
-        "X-Debug-Comments-Db": notionCommentsDatabaseId.slice(0, 8),
-      },
-    });
+    return new Response(null, { status: 401 });
   }
 
   let body: LineWebhookBody;
