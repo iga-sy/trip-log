@@ -99,9 +99,6 @@ async function processUserEvents(
     return;
   }
 
-  // TODO: 原因調査用の一時ログ。原因判明後に削除する。
-  console.log("受信テキスト(デバッグ用):", JSON.stringify(text));
-
   // 1行目が「予定」の決まったフォーマットならタイトル・日時・リンクを抽出して
   // 「予定」DBに書き込む。判定・抽出はAI等を使わない文字列処理のみで完結する。
   const schedule = text ? parseScheduleMessage(text) : null;

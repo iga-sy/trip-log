@@ -90,3 +90,36 @@ test("parsePlainDate: 不正な時刻(25時)はnull", () => {
 test("parsePlainDate: 存在しない日(2月30日)はnull", () => {
   assert.equal(parsePlainDate("2024-02-30"), null);
 });
+
+test("スラッシュ区切り・1桁月日の日時も抽出できる", () => {
+  const result = parseScheduleMessage("予定\nタイトル：Pino cafe&meal\n日時：2025/4/29 11:26");
+  assert.equal(result?.title, "Pino cafe&meal");
+  assert.equal(result?.dateISO, "2025-04-29T11:26:00+09:00");
+  assert.equal(result?.hasTime, true);
+});
+
+test("parsePlainDate: スラッシュ区切りの日付のみも扱える", () => {
+  assert.deepEqual(parsePlainDate("2025/4/29"), { dateISO: "2025-04-29", hasTime: false });
+});
+
+test("「リンク」ラベルの後に店名があっても、本文中のURLを自動検出する", () => {
+  const result = parseScheduleMessage(
+    [
+      "予定",
+      "タイトル：Pino cafe&meal",
+      "日時：2025/4/29 11:26",
+      "リンク：ピノ カフェ&ミール",
+      "0287-74-5726",
+      "栃木県那須郡那須町高久甲5109-10 ",
+      "https://tabelog.com/tochigi/A0905/A090501/9017730/",
+    ].join("\n"),
+  );
+  assert.equal(result?.url, "https://tabelog.com/tochigi/A0905/A090501/9017730/");
+});
+
+test("URLがどの行にあっても（ラベル無しでも）検出できる", () => {
+  const result = parseScheduleMessage(
+    "予定\nタイトル: 那須どうぶつ王国\n日時: 2024-09-15\nhttps://example.com/spot",
+  );
+  assert.equal(result?.url, "https://example.com/spot");
+});
