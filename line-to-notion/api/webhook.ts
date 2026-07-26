@@ -26,7 +26,14 @@ export async function POST(request: Request): Promise<Response> {
 
   if (!verifyLineSignature(rawBody, signature, lineChannelSecret)) {
     console.error("LINE署名検証に失敗しました");
-    return new Response(null, { status: 401, headers: { "X-Debug-Deploy": "2026-07-26-c5cbaeb" } });
+    return new Response(null, {
+      status: 401,
+      headers: {
+        "X-Debug-Deploy": "2026-07-26-c5cbaeb",
+        "X-Debug-Schedule-Db": notionScheduleDatabaseId.slice(0, 8),
+        "X-Debug-Comments-Db": notionCommentsDatabaseId.slice(0, 8),
+      },
+    });
   }
 
   let body: LineWebhookBody;
