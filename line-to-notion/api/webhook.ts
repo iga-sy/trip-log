@@ -26,7 +26,7 @@ export async function POST(request: Request): Promise<Response> {
 
   if (!verifyLineSignature(rawBody, signature, lineChannelSecret)) {
     console.error("LINE署名検証に失敗しました");
-    return new Response(null, { status: 401 });
+    return new Response(null, { status: 401, headers: { "X-Debug-Deploy": "2026-07-26-c5cbaeb" } });
   }
 
   let body: LineWebhookBody;
