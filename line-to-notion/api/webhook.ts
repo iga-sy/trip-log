@@ -36,6 +36,9 @@ export async function POST(request: Request): Promise<Response> {
     return new Response(null, { status: 400 });
   }
 
+  // TODO: 原因調査用の一時ログ。原因判明後に削除する。
+  console.log("受信イベント(デバッグ用):", JSON.stringify(body.events));
+
   const byUser = new Map<string, LineMessageEvent[]>();
   for (const event of body.events ?? []) {
     if (!isMessageEvent(event)) continue;
