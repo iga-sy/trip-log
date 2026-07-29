@@ -11,6 +11,7 @@ test("時刻ありの正しいフォーマットを抽出できる", () => {
     dateISO: "2024-09-15T09:30:00+09:00",
     hasTime: true,
     url: "https://example.com",
+    tripName: undefined,
   });
 });
 
@@ -21,6 +22,7 @@ test("時刻なし(日付のみ)の正しいフォーマットを抽出できる
     dateISO: "2024-09-15",
     hasTime: false,
     url: undefined,
+    tripName: undefined,
   });
 });
 
@@ -38,7 +40,20 @@ test("ラベルの順序が入れ替わっていても正しくパースでき�
     dateISO: "2024-09-15T09:30:00+09:00",
     hasTime: true,
     url: "https://example.com",
+    tripName: undefined,
   });
+});
+
+test("「旅行:」ラベルがあれば旅行名を抽出できる", () => {
+  const result = parseScheduleMessage(
+    "予定\n旅行: 京都旅行2025\nタイトル: 清水寺\n日時: 2025-05-01",
+  );
+  assert.equal(result?.tripName, "京都旅行2025");
+});
+
+test("「旅行:」ラベルが無ければtripNameはundefined", () => {
+  const result = parseScheduleMessage("予定\nタイトル: 那須どうぶつ王国\n日時: 2024-09-15");
+  assert.equal(result?.tripName, undefined);
 });
 
 test("全角コロンのラベルも受け付ける", () => {

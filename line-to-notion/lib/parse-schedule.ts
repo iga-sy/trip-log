@@ -3,14 +3,16 @@ export interface ScheduleInput {
   dateISO: string;
   hasTime: boolean;
   url?: string;
+  tripName?: string;
 }
 
 const TRIGGER_LINE = "予定";
 const TIMEZONE_OFFSET = "+09:00";
 
-const LABEL_PATTERNS: { key: "title" | "date"; pattern: RegExp }[] = [
+const LABEL_PATTERNS: { key: "title" | "date" | "tripName"; pattern: RegExp }[] = [
   { key: "title", pattern: /^タイトル[:：]\s*(.+)$/ },
   { key: "date", pattern: /^日時[:：]\s*(.+)$/ },
+  { key: "tripName", pattern: /^旅行[:：]\s*(.+)$/ },
 ];
 
 const URL_PATTERN = /https?:\/\/\S+/;
@@ -67,9 +69,11 @@ function isValidTime(hh: string, mm: string): boolean {
 
 /**
  * LINEメッセージが「予定」フォーマットかどうかを判定し、該当すればタイトル・日時・
- * リンクを抽出する純粋関数（外部通信なし）。
+ * リンク・（あれば）旅行名を抽出する純粋関数（外部通信なし）。
  * 1行目が「予定」でない、またはタイトル・日時のいずれかが欠ける/不正な場合はnullを返し、
  * 呼び出し側は「全体感想」への投稿として扱う。
+ * 「旅行:」ラベルは省略可能。省略時は呼び出し側でデフォルトの旅行名を適用する
+ * （複数の旅行が並行して進んでいるときだけ明示的に指定すればよい）。
  * リンクはラベル指定ではなく、メッセージ全体からhttp(s)://で始まる文字列を自動検出する
  * （食べログ等のページ情報をそのまま貼り付けた場合、URLがラベル行以外にあることが多いため）。
  */
@@ -81,6 +85,7 @@ export function parseScheduleMessage(text: string): ScheduleInput | null {
 
   let title: string | undefined;
   let dateText: string | undefined;
+  let tripName: string | undefined;
 
   for (const line of lines.slice(1)) {
     if (!line) continue;
@@ -90,6 +95,7 @@ export function parseScheduleMessage(text: string): ScheduleInput | null {
       const value = match[1].trim();
       if (key === "title") title = value;
       else if (key === "date") dateText = value;
+      else if (key === "tripName") tripName = value;
     }
   }
 
@@ -105,5 +111,5 @@ export function parseScheduleMessage(text: string): ScheduleInput | null {
   const urlMatch = text.match(URL_PATTERN);
   const url = urlMatch ? urlMatch[0] : undefined;
 
-  return { title, dateISO: parsedDate.dateISO, hasTime: parsedDate.hasTime, url };
+  return { title, dateISO: parsedDate.dateISO, hasTime: parsedDate.hasTime, url, tripName };
 }

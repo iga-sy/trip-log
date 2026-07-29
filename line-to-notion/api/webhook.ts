@@ -1,4 +1,4 @@
-import { requireEnv } from "../lib/env.js";
+import { parseTripNames, requireEnv } from "../lib/env.js";
 import { verifyLineSignature } from "../lib/line-signature.js";
 import {
   fetchImageContent,
@@ -13,6 +13,7 @@ import { uploadFileToNotion, createPage, type NotionFileUpload } from "../lib/no
 import { buildCommentProperties, buildScheduleProperties } from "../lib/build-properties.js";
 import { parseScheduleMessage } from "../lib/parse-schedule.js";
 import { parseNamePrefix } from "../lib/parse-name-prefix.js";
+import { parseTripPrefix } from "../lib/parse-trip-prefix.js";
 
 export async function POST(request: Request): Promise<Response> {
   const lineChannelSecret = requireEnv("LINE_CHANNEL_SECRET");
@@ -20,6 +21,7 @@ export async function POST(request: Request): Promise<Response> {
   const notionApiKey = requireEnv("NOTION_API_KEY");
   const notionCommentsDatabaseId = requireEnv("NOTION_COMMENTS_DATABASE_ID");
   const notionScheduleDatabaseId = requireEnv("NOTION_DATABASE_ID");
+  const activeTripNames = parseTripNames(requireEnv("ACTIVE_TRIP_NAME"));
 
   const rawBody = await request.text();
   const signature = request.headers.get("x-line-signature");
@@ -54,6 +56,7 @@ export async function POST(request: Request): Promise<Response> {
         notionApiKey,
         notionCommentsDatabaseId,
         notionScheduleDatabaseId,
+        activeTripNames,
       });
     } catch (err) {
       console.error(`ユーザー ${userId} のイベント処理に失敗しました:`, err);
@@ -68,6 +71,7 @@ interface ProcessContext {
   notionApiKey: string;
   notionCommentsDatabaseId: string;
   notionScheduleDatabaseId: string;
+  activeTripNames: string[];
 }
 
 async function processUserEvents(
@@ -104,14 +108,25 @@ async function processUserEvents(
   const schedule = text ? parseScheduleMessage(text) : null;
 
   if (schedule) {
-    const properties = buildScheduleProperties({ ...schedule, fileUploads });
+    const properties = buildScheduleProperties({
+      ...schedule,
+      tripName: schedule.tripName ?? ctx.activeTripNames[0],
+      fileUploads,
+    });
     await createPage(ctx.notionApiKey, ctx.notionScheduleDatabaseId, properties);
     return;
   }
 
-  // 「予定」でなければ、本文先頭の名前プレフィックス（例:「修: 」）を判定して
-  // 「全体感想」DBに書き込む。プレフィックスが無ければ投稿者未設定のまま記録する。
-  const { name, text: commentText } = parseNamePrefix(text);
-  const properties = buildCommentProperties({ name, text: commentText, fileUploads });
+  // 「予定」でなければ、本文先頭の`[旅行名]`（複数の旅行が並行しているときのみ）と
+  // 名前プレフィックス（例:「修: 」）を判定して「全体感想」DBに書き込む。
+  // どちらも省略可能で、無ければ既定の旅行・投稿者未設定のまま記録する。
+  const { tripName, text: afterTripPrefix } = parseTripPrefix(text);
+  const { name, text: commentText } = parseNamePrefix(afterTripPrefix);
+  const properties = buildCommentProperties({
+    tripName: tripName ?? ctx.activeTripNames[0],
+    name,
+    text: commentText,
+    fileUploads,
+  });
   await createPage(ctx.notionApiKey, ctx.notionCommentsDatabaseId, properties);
 }

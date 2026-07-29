@@ -2,8 +2,8 @@ import type { NotionFileUpload } from "./notion-write.js";
 import type { FamilyMember } from "./parse-name-prefix.js";
 
 // 実際の「全体感想」データベースの構成に合わせる。
-// title列の名前は「投稿者」だが実際には旅行名などに使う予定のタイトル型プロパティのため、
-// LINEからは常に空のまま作成する。投稿者本人（誰が書いたか）は「マルチセレクト」列に入れる。
+// title列の名前は「投稿者」だが実際には旅行名を入れるためのタイトル型プロパティ。
+// 投稿者本人（誰が書いたか）は「マルチセレクト」列に入れる。
 export const COMMENTS_DB_PROPERTY_NAMES = {
   title: "投稿者",
   author: "マルチセレクト",
@@ -12,6 +12,7 @@ export const COMMENTS_DB_PROPERTY_NAMES = {
 } as const;
 
 export interface BuildCommentPropertiesInput {
+  tripName: string;
   name: FamilyMember | null;
   text: string;
   fileUploads: NotionFileUpload[];
@@ -26,7 +27,9 @@ export function buildCommentProperties(
   input: BuildCommentPropertiesInput,
 ): Record<string, unknown> {
   const properties: Record<string, unknown> = {
-    [COMMENTS_DB_PROPERTY_NAMES.title]: { title: [] },
+    [COMMENTS_DB_PROPERTY_NAMES.title]: {
+      title: [{ text: { content: input.tripName } }],
+    },
     [COMMENTS_DB_PROPERTY_NAMES.author]: {
       multi_select: input.name ? [{ name: input.name }] : [],
     },
@@ -50,7 +53,7 @@ export function buildCommentProperties(
 
 // trip-diaryのfetch-notion.tsのPROPERTY_NAMESと一致させる（「修/美/悠/紗」の各列は
 // LINEからは書き込まないためここには含めない＝プロパティごと送信せず空欄のまま作成される）。
-// title列（"旅行名"という名前だが実際には未使用）はNotion上必須のため触らない。
+// dbTitle列（"旅行名"）にはどの旅行の予定かを識別するためLINE側のACTIVE_TRIP_NAMEを書き込む。
 // スポット名はrich_text型のため、コメントDBの「メモ」と同様の扱いにする。
 export const SCHEDULE_DB_PROPERTY_NAMES = {
   dbTitle: "旅行名",
@@ -61,6 +64,7 @@ export const SCHEDULE_DB_PROPERTY_NAMES = {
 } as const;
 
 export interface BuildSchedulePropertiesInput {
+  tripName: string;
   title: string;
   dateISO: string;
   hasTime: boolean;
@@ -76,7 +80,9 @@ export function buildScheduleProperties(
   input: BuildSchedulePropertiesInput,
 ): Record<string, unknown> {
   const properties: Record<string, unknown> = {
-    [SCHEDULE_DB_PROPERTY_NAMES.dbTitle]: { title: [] },
+    [SCHEDULE_DB_PROPERTY_NAMES.dbTitle]: {
+      title: [{ text: { content: input.tripName } }],
+    },
     [SCHEDULE_DB_PROPERTY_NAMES.title]: {
       rich_text: input.title ? [{ text: { content: input.title } }] : [],
     },

@@ -7,13 +7,21 @@ import {
   SCHEDULE_DB_PROPERTY_NAMES,
 } from "../lib/build-properties.js";
 
-test("タイトル列は常に空で作成される", () => {
-  const properties = buildCommentProperties({ name: "修", text: "楽しかった!", fileUploads: [] });
-  assert.deepEqual(properties[COMMENTS_DB_PROPERTY_NAMES.title], { title: [] });
+test("タイトル列にtripNameが入る", () => {
+  const properties = buildCommentProperties({
+    tripName: "那須旅行2024",
+    name: "修",
+    text: "楽しかった!",
+    fileUploads: [],
+  });
+  assert.deepEqual(properties[COMMENTS_DB_PROPERTY_NAMES.title], {
+    title: [{ text: { content: "那須旅行2024" } }],
+  });
 });
 
 test("名前プレフィックスがある場合、マルチセレクトとメモが正しく入る", () => {
   const properties = buildCommentProperties({
+    tripName: "那須旅行2024",
     name: "修",
     text: "楽しかった!",
     fileUploads: [],
@@ -30,6 +38,7 @@ test("名前プレフィックスがある場合、マルチセレクトとメ�
 
 test("名前が判定できない場合、マルチセレクトは空配列になる", () => {
   const properties = buildCommentProperties({
+    tripName: "那須旅行2024",
     name: null,
     text: "今日は楽しかった",
     fileUploads: [],
@@ -40,6 +49,7 @@ test("名前が判定できない場合、マルチセレクトは空配列に�
 
 test("画像のみの場合、写真プロパティにfile_upload参照が入る", () => {
   const properties = buildCommentProperties({
+    tripName: "那須旅行2024",
     name: "美",
     text: "",
     fileUploads: [
@@ -59,6 +69,7 @@ test("画像のみの場合、写真プロパティにfile_upload参照が入る
 
 test("テキストと画像の両方がある場合、両方のプロパティが含まれる", () => {
   const properties = buildCommentProperties({
+    tripName: "那須旅行2024",
     name: "悠",
     text: "この写真見て",
     fileUploads: [{ id: "upload-1", name: "line-1.jpg" }],
@@ -72,15 +83,18 @@ test("テキストと画像の両方がある場合、両方のプロパティ�
   });
 });
 
-test("予定: タイトル列(旅行名)は常に空、スポット名はrich_textで入る", () => {
+test("予定: タイトル列にtripNameが入り、スポット名はrich_textで入る", () => {
   const properties = buildScheduleProperties({
+    tripName: "那須旅行2024",
     title: "焼肉屋さん",
     dateISO: "2025-04-29T11:26:00",
     hasTime: true,
     fileUploads: [],
   });
 
-  assert.deepEqual(properties[SCHEDULE_DB_PROPERTY_NAMES.dbTitle], { title: [] });
+  assert.deepEqual(properties[SCHEDULE_DB_PROPERTY_NAMES.dbTitle], {
+    title: [{ text: { content: "那須旅行2024" } }],
+  });
   assert.deepEqual(properties[SCHEDULE_DB_PROPERTY_NAMES.title], {
     rich_text: [{ text: { content: "焼肉屋さん" } }],
   });
@@ -91,6 +105,7 @@ test("予定: タイトル列(旅行名)は常に空、スポット名はrich_te
 
 test("予定: URLがある場合はurlプロパティが入り、無い場合は含まれない", () => {
   const withUrl = buildScheduleProperties({
+    tripName: "那須旅行2024",
     title: "焼肉屋さん",
     dateISO: "2025-04-29",
     hasTime: false,
@@ -100,6 +115,7 @@ test("予定: URLがある場合はurlプロパティが入り、無い場合は
   assert.deepEqual(withUrl[SCHEDULE_DB_PROPERTY_NAMES.url], { url: "https://tabelog.com/example" });
 
   const withoutUrl = buildScheduleProperties({
+    tripName: "那須旅行2024",
     title: "焼肉屋さん",
     dateISO: "2025-04-29",
     hasTime: false,
@@ -110,6 +126,7 @@ test("予定: URLがある場合はurlプロパティが入り、無い場合は
 
 test("予定: 画像がある場合、写真プロパティにfile_upload参照が入る", () => {
   const properties = buildScheduleProperties({
+    tripName: "那須旅行2024",
     title: "焼肉屋さん",
     dateISO: "2025-04-29",
     hasTime: false,
