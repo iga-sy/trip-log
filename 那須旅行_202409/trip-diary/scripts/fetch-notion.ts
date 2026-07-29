@@ -6,7 +6,7 @@ import CryptoJS from "crypto-js";
 import { Client, isFullPage } from "@notionhq/client";
 import type { PageObjectResponse } from "@notionhq/client/build/src/api-endpoints";
 import { geocode } from "./lib/geocode.ts";
-import type { TripComment, TripData, TripEvent } from "../src/types/trip.ts";
+import type { TripComment, TripEvent, TripSummary, TripsFile } from "../src/types/trip.ts";
 
 dotenv.config();
 
@@ -14,7 +14,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Notion側のプロパティ名が変わった場合はここだけ直せばよい
 // 「メモ」に相当する列は無いため、memoは常に空文字列として扱う。
+// tripName列（タイトル型）は、複数の旅行を1つのDBで区別するための旅行名が入る。
 const PROPERTY_NAMES = {
+  tripName: "旅行名",
   title: "スポット名",
   date: "日時",
   shopLink: "リンク",
@@ -22,16 +24,20 @@ const PROPERTY_NAMES = {
 } as const;
 
 // 「全体の感想」データベースのプロパティ名
-// title列（"投稿者"という名前だが実際には未使用）はNotion上必須のため触らない。
+// tripName列（"投稿者"という名前だが、実際には旅行名を区別するためのタイトル型プロパティ）は
+// 複数の旅行を1つのDBで区別するための旅行名が入る。
 // 投稿者本人はマルチセレクト列で管理する（LINE経由の代筆投稿のため表示名を使えないので、
 // 本文先頭の名前プレフィックスで判定した結果がここに入る）。
 const COMMENTS_DB_PROPERTY_NAMES = {
+  tripName: "投稿者",
   author: "マルチセレクト",
   text: "メモ",
   photos: "写真",
 } as const;
 
 const FAMILY_MEMBERS = ["修", "美", "悠", "紗"] as const;
+
+const FALLBACK_TRIP_NAME = "無題の旅行";
 
 const OUTPUT_DIR_IMAGES = path.resolve(__dirname, "../public/images");
 const OUTPUT_DATA_FILE = path.resolve(__dirname, "../public/data.json");
@@ -72,17 +78,17 @@ async function queryAllPages(
   return pages;
 }
 
-async function fetchDatabaseTitle(notion: Client, databaseId: string): Promise<string> {
-  const db = await notion.databases.retrieve({ database_id: databaseId });
-  if ("title" in db) {
-    const text = db.title.map((t) => t.plain_text).join("");
-    return text || "旅行のしおり";
-  }
-  return "旅行のしおり";
-}
-
 function getPlainText(richText: { plain_text: string }[]): string {
   return richText.map((t) => t.plain_text).join("");
+}
+
+function extractTripName(page: PageObjectResponse, propertyName: string): string {
+  const prop = page.properties[propertyName];
+  if (prop?.type === "title") {
+    const text = getPlainText(prop.title).trim();
+    return text || FALLBACK_TRIP_NAME;
+  }
+  return FALLBACK_TRIP_NAME;
 }
 
 function extractTitle(page: PageObjectResponse): string {
@@ -185,52 +191,24 @@ async function downloadPhotos(
   return photoPaths;
 }
 
-async function fetchOverallComments(notion: Client, commentsDatabaseId: string): Promise<TripComment[]> {
-  const pages = await queryAllPages(notion, commentsDatabaseId, [
-    { timestamp: "created_time", direction: "ascending" },
-  ]);
-
-  const comments: TripComment[] = [];
+function groupByTripName(
+  pages: PageObjectResponse[],
+  tripNamePropertyName: string,
+): Map<string, PageObjectResponse[]> {
+  const groups = new Map<string, PageObjectResponse[]>();
   for (const page of pages) {
-    const authorProp = page.properties[COMMENTS_DB_PROPERTY_NAMES.author];
-    const textProp = page.properties[COMMENTS_DB_PROPERTY_NAMES.text];
-
-    const name =
-      authorProp?.type === "multi_select"
-        ? authorProp.multi_select.map((option) => option.name).join(", ")
-        : undefined;
-    const text = textProp?.type === "rich_text" ? getPlainText(textProp.rich_text).trim() : "";
-
-    const fileEntries = extractFileEntries(page, COMMENTS_DB_PROPERTY_NAMES.photos);
-    const photos = await downloadPhotos(`comment-${page.id}`, fileEntries);
-
-    if (!name || (!text && photos.length === 0)) {
-      console.warn(`[fetch-notion] 全体感想: 投稿者、または本文・写真の両方が空のためスキップ (page: ${page.id})`);
-      continue;
-    }
-    comments.push({ name, text, photos });
+    const tripName = extractTripName(page, tripNamePropertyName);
+    const group = groups.get(tripName) ?? [];
+    group.push(page);
+    groups.set(tripName, group);
   }
-  return comments;
+  return groups;
 }
 
-async function main() {
-  const apiKey = requireEnv("NOTION_API_KEY");
-  const databaseId = requireEnv("NOTION_DATABASE_ID");
-  const commentsDatabaseId = requireEnv("NOTION_COMMENTS_DATABASE_ID");
-  const sitePassword = requireEnv("SITE_PASSWORD");
-  const notion = new Client({ auth: apiKey });
-
-  await fs.mkdir(OUTPUT_DIR_IMAGES, { recursive: true });
-  await fs.mkdir(path.dirname(OUTPUT_DATA_FILE), { recursive: true });
-
-  console.log("[fetch-notion] Notionデータベースを取得中...");
-  const [tripTitle, pages, overallComments] = await Promise.all([
-    fetchDatabaseTitle(notion, databaseId),
-    queryAllPages(notion, databaseId, [{ property: PROPERTY_NAMES.date, direction: "ascending" }]),
-    fetchOverallComments(notion, commentsDatabaseId),
-  ]);
-  console.log(`[fetch-notion] ${pages.length} 件のページ、${overallComments.length} 件の全体感想を取得しました`);
-
+async function buildEventsForTrip(pages: PageObjectResponse[]): Promise<{
+  events: TripEvent[];
+  warningCount: number;
+}> {
   const events: TripEvent[] = [];
   let warningCount = 0;
 
@@ -272,22 +250,94 @@ async function main() {
 
   events.sort((a, b) => a.dateISO.localeCompare(b.dateISO));
 
-  const heroEvent = events.find((event) => event.photos.length > 0);
+  return { events, warningCount };
+}
 
-  const tripData: TripData = {
-    tripTitle,
-    heroImage: heroEvent ? heroEvent.photos[0] : null,
-    generatedAt: new Date().toISOString(),
-    events,
-    overallComments,
-  };
+async function buildCommentsForTrip(pages: PageObjectResponse[]): Promise<TripComment[]> {
+  const comments: TripComment[] = [];
+  for (const page of pages) {
+    const authorProp = page.properties[COMMENTS_DB_PROPERTY_NAMES.author];
+    const textProp = page.properties[COMMENTS_DB_PROPERTY_NAMES.text];
+
+    const name =
+      authorProp?.type === "multi_select"
+        ? authorProp.multi_select.map((option) => option.name).join(", ")
+        : undefined;
+    const text = textProp?.type === "rich_text" ? getPlainText(textProp.rich_text).trim() : "";
+
+    const fileEntries = extractFileEntries(page, COMMENTS_DB_PROPERTY_NAMES.photos);
+    const photos = await downloadPhotos(`comment-${page.id}`, fileEntries);
+
+    if (!name || (!text && photos.length === 0)) {
+      console.warn(`[fetch-notion] 全体感想: 投稿者、または本文・写真の両方が空のためスキップ (page: ${page.id})`);
+      continue;
+    }
+    comments.push({ name, text, photos });
+  }
+  return comments;
+}
+
+async function main() {
+  const apiKey = requireEnv("NOTION_API_KEY");
+  const databaseId = requireEnv("NOTION_DATABASE_ID");
+  const commentsDatabaseId = requireEnv("NOTION_COMMENTS_DATABASE_ID");
+  const sitePassword = requireEnv("SITE_PASSWORD");
+  const notion = new Client({ auth: apiKey });
+
+  await fs.mkdir(OUTPUT_DIR_IMAGES, { recursive: true });
+  await fs.mkdir(path.dirname(OUTPUT_DATA_FILE), { recursive: true });
+
+  console.log("[fetch-notion] Notionデータベースを取得中...");
+  const [schedulePages, commentPages] = await Promise.all([
+    queryAllPages(notion, databaseId, [{ property: PROPERTY_NAMES.date, direction: "ascending" }]),
+    queryAllPages(notion, commentsDatabaseId, [
+      { timestamp: "created_time", direction: "ascending" },
+    ]),
+  ]);
+  console.log(`[fetch-notion] ${schedulePages.length} 件の予定、${commentPages.length} 件の全体感想を取得しました`);
+
+  const scheduleGroups = groupByTripName(schedulePages, PROPERTY_NAMES.tripName);
+  const commentGroups = groupByTripName(commentPages, COMMENTS_DB_PROPERTY_NAMES.tripName);
+
+  const tripNames = new Set<string>([...scheduleGroups.keys(), ...commentGroups.keys()]);
+
+  const trips: TripSummary[] = [];
+  let totalWarningCount = 0;
+
+  for (const tripName of tripNames) {
+    const { events, warningCount } = await buildEventsForTrip(scheduleGroups.get(tripName) ?? []);
+    const overallComments = await buildCommentsForTrip(commentGroups.get(tripName) ?? []);
+    totalWarningCount += warningCount;
+
+    const heroEvent = events.find((event) => event.photos.length > 0);
+
+    trips.push({
+      id: tripName,
+      label: tripName,
+      tripTitle: tripName,
+      heroImage: heroEvent ? heroEvent.photos[0] : null,
+      generatedAt: new Date().toISOString(),
+      events,
+      overallComments,
+    });
+  }
+
+  trips.sort((a, b) => {
+    const aFirst = a.events[0]?.dateISO ?? "";
+    const bFirst = b.events[0]?.dateISO ?? "";
+    return aFirst.localeCompare(bFirst);
+  });
+
+  const tripsFile: TripsFile = { trips };
 
   // dataは暗号化してからpublic/配下に書き出す。復号鍵(SITE_PASSWORD)はビルドログにも
   // 出力に含めない。平文JSONはディスクにも残さずメモリ上でのみ扱う。
-  const ciphertext = CryptoJS.AES.encrypt(JSON.stringify(tripData), sitePassword).toString();
+  const ciphertext = CryptoJS.AES.encrypt(JSON.stringify(tripsFile), sitePassword).toString();
   await fs.writeFile(OUTPUT_DATA_FILE, JSON.stringify({ ciphertext }), "utf-8");
 
-  console.log(`[fetch-notion] 完了: イベント${events.length}件、警告${warningCount}件`);
+  console.log(
+    `[fetch-notion] 完了: 旅行${trips.length}件、警告${totalWarningCount}件`,
+  );
   console.log(`[fetch-notion] 出力先: ${OUTPUT_DATA_FILE}（暗号化済み）`);
 }
 

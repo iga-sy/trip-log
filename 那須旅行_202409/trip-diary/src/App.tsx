@@ -1,21 +1,42 @@
 import { useState } from "react";
-import type { TripData } from "./types/trip";
+import type { TripsFile } from "./types/trip";
 import PasswordGate from "./components/PasswordGate";
 import Hero from "./components/Hero";
 import Timeline from "./components/Timeline";
 import PhotoSidebar from "./components/PhotoSidebar";
 import OverallComments from "./components/OverallComments";
 import TripMap from "./components/TripMap";
+import TripTabs from "./components/TripTabs";
 
 export default function App() {
-  const [tripData, setTripData] = useState<TripData | null>(null);
+  const [tripsFile, setTripsFile] = useState<TripsFile | null>(null);
+  const [activeTripId, setActiveTripId] = useState<string | null>(null);
+
+  if (!tripsFile) {
+    return (
+      <PasswordGate
+        onUnlock={(data) => {
+          setTripsFile(data);
+          setActiveTripId(data.trips[0]?.id ?? null);
+        }}
+      />
+    );
+  }
+
+  const tripData =
+    tripsFile.trips.find((trip) => trip.id === activeTripId) ?? tripsFile.trips[0];
 
   if (!tripData) {
-    return <PasswordGate onUnlock={setTripData} />;
+    return null;
   }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
+      <TripTabs
+        trips={tripsFile.trips}
+        activeTripId={tripData.id}
+        onSelect={setActiveTripId}
+      />
       <Hero tripData={tripData} />
       <main className="mx-auto max-w-5xl px-4 py-12">
         <div className="flex flex-col gap-12 md:flex-row md:items-start">

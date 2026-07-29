@@ -1,11 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
 import * as CryptoJS from "crypto-js";
-import type { TripData } from "../types/trip";
+import type { TripsFile } from "../types/trip";
 
 const SESSION_KEY = "trip-diary-password";
 
 interface PasswordGateProps {
-  onUnlock: (data: TripData) => void;
+  onUnlock: (data: TripsFile) => void;
 }
 
 async function fetchCiphertext(): Promise<string> {
@@ -17,14 +17,14 @@ async function fetchCiphertext(): Promise<string> {
   return ciphertext;
 }
 
-function decrypt(ciphertext: string, password: string): TripData | null {
+function decrypt(ciphertext: string, password: string): TripsFile | null {
   try {
     const bytes = CryptoJS.AES.decrypt(ciphertext, password);
     const plaintext = bytes.toString(CryptoJS.enc.Utf8);
     if (!plaintext) {
       return null;
     }
-    return JSON.parse(plaintext) as TripData;
+    return JSON.parse(plaintext) as TripsFile;
   } catch {
     return null;
   }

@@ -23,3 +23,12 @@ export interface TripData {
   events: TripEvent[];
   overallComments: TripComment[];
 }
+
+export interface TripSummary extends TripData {
+  id: string;
+  label: string;
+}
+
+export interface TripsFile {
+  trips: TripSummary[];
+}
