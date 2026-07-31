@@ -41,7 +41,7 @@ export default function App() {
       <main className="mx-auto max-w-5xl px-4 py-12">
         <div className="flex flex-col gap-12 md:flex-row md:items-start">
           <div className="order-2 md:sticky md:top-8 md:order-1 md:w-2/5">
-            <PhotoSidebar overallComments={tripData.overallComments} />
+            <PhotoSidebar albumPhotos={tripData.albumPhotos} />
           </div>
           <div className="order-1 md:order-2 md:w-3/5">
             <Timeline events={tripData.events} />

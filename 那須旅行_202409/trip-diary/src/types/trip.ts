@@ -22,6 +22,7 @@ export interface TripData {
   generatedAt: string;
   events: TripEvent[];
   overallComments: TripComment[];
+  albumPhotos: string[];
 }
 
 export interface TripSummary extends TripData {

@@ -3,6 +3,7 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import * as dotenv from "dotenv";
 import CryptoJS from "crypto-js";
+import exifr from "exifr";
 import { Client, isFullPage } from "@notionhq/client";
 import type { PageObjectResponse } from "@notionhq/client/build/src/api-endpoints";
 import { geocode } from "./lib/geocode.ts";
@@ -191,6 +192,43 @@ async function downloadPhotos(
   return photoPaths;
 }
 
+interface AlbumPhotoEntry {
+  path: string;
+  takenAt: string;
+}
+
+// アルバム写真はExifの撮影日時で並べたいため、通常のdownloadPhotosとは別に
+// ダウンロード後のファイルからDateTimeOriginalを読み取る。Exifが無い画像
+// （スクリーンショット等）は、フォールバックとしてNotionページの作成日時を使う。
+async function downloadAlbumPhotos(
+  idPrefix: string,
+  entries: NotionFileEntry[],
+  fallbackDate: string,
+): Promise<AlbumPhotoEntry[]> {
+  const results: AlbumPhotoEntry[] = [];
+  for (const entry of entries) {
+    const ext = guessExtension(entry.url, entry.name);
+    const filename = `${idPrefix}-${results.length}${ext}`;
+    const destPath = path.join(OUTPUT_DIR_IMAGES, filename);
+    const ok = await downloadImage(entry.url, destPath);
+    if (!ok) continue;
+
+    let takenAt = fallbackDate;
+    try {
+      const buffer = await fs.readFile(destPath);
+      const exifData = await exifr.parse(buffer, ["DateTimeOriginal"]);
+      if (exifData?.DateTimeOriginal instanceof Date) {
+        takenAt = exifData.DateTimeOriginal.toISOString();
+      }
+    } catch {
+      // Exif読み取り失敗時はフォールバック日時のまま扱う
+    }
+
+    results.push({ path: `images/${filename}`, takenAt });
+  }
+  return results;
+}
+
 function groupByTripName(
   pages: PageObjectResponse[],
   tripNamePropertyName: string,
@@ -253,8 +291,14 @@ async function buildEventsForTrip(pages: PageObjectResponse[]): Promise<{
   return { events, warningCount };
 }
 
-async function buildCommentsForTrip(pages: PageObjectResponse[]): Promise<TripComment[]> {
+interface CommentsResult {
+  comments: TripComment[];
+  albumPhotos: string[];
+}
+
+async function buildCommentsForTrip(pages: PageObjectResponse[]): Promise<CommentsResult> {
   const comments: TripComment[] = [];
+  const albumPhotoEntries: AlbumPhotoEntry[] = [];
   for (const page of pages) {
     const authorProp = page.properties[COMMENTS_DB_PROPERTY_NAMES.author];
     const textProp = page.properties[COMMENTS_DB_PROPERTY_NAMES.text];
@@ -262,19 +306,32 @@ async function buildCommentsForTrip(pages: PageObjectResponse[]): Promise<TripCo
     const name =
       authorProp?.type === "multi_select"
         ? authorProp.multi_select.map((option) => option.name).join(", ")
-        : undefined;
+        : "";
     const text = textProp?.type === "rich_text" ? getPlainText(textProp.rich_text).trim() : "";
 
     const fileEntries = extractFileEntries(page, COMMENTS_DB_PROPERTY_NAMES.photos);
-    const photos = await downloadPhotos(`comment-${page.id}`, fileEntries);
 
-    if (!name || (!text && photos.length === 0)) {
-      console.warn(`[fetch-notion] 全体感想: 投稿者、または本文・写真の両方が空のためスキップ (page: ${page.id})`);
+    // 投稿者・メモが両方空の行は、感想ではなく「アルバム専用の写真置き場」として扱う
+    // （Notionアプリからこの行の「写真」列に撮った写真をまとめてアップロードするだけで済む運用）。
+    // 撮影日時が分かるようExifを読み取ってから、後でまとめてソートする。
+    if (!name && !text) {
+      if (fileEntries.length === 0) {
+        console.warn(`[fetch-notion] 全体感想: 投稿者・本文・写真すべて空のためスキップ (page: ${page.id})`);
+        continue;
+      }
+      const entries = await downloadAlbumPhotos(`comment-${page.id}`, fileEntries, page.created_time);
+      albumPhotoEntries.push(...entries);
       continue;
     }
+
+    const photos = await downloadPhotos(`comment-${page.id}`, fileEntries);
     comments.push({ name, text, photos });
   }
-  return comments;
+
+  albumPhotoEntries.sort((a, b) => a.takenAt.localeCompare(b.takenAt));
+  const albumPhotos = albumPhotoEntries.map((entry) => entry.path);
+
+  return { comments, albumPhotos };
 }
 
 async function main() {
@@ -306,8 +363,16 @@ async function main() {
 
   for (const tripName of tripNames) {
     const { events, warningCount } = await buildEventsForTrip(scheduleGroups.get(tripName) ?? []);
-    const overallComments = await buildCommentsForTrip(commentGroups.get(tripName) ?? []);
+    const { comments: overallComments, albumPhotos } = await buildCommentsForTrip(
+      commentGroups.get(tripName) ?? [],
+    );
     totalWarningCount += warningCount;
+
+    // 予定・感想・アルバム写真のいずれも無い旅行は、テスト投稿等で作られた
+    // 空グループの可能性が高いためタブに出さない
+    if (events.length === 0 && overallComments.length === 0 && albumPhotos.length === 0) {
+      continue;
+    }
 
     const heroEvent = events.find((event) => event.photos.length > 0);
 
@@ -319,6 +384,7 @@ async function main() {
       generatedAt: new Date().toISOString(),
       events,
       overallComments,
+      albumPhotos,
     });
   }
 
