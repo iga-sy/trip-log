@@ -52,8 +52,8 @@ export default function TripMap({ events }: TripMapProps) {
           {pinned.map((event) => (
             <Marker key={event.id} position={[event.coords.lat, event.coords.lng]}>
               <Popup>
-                <p className="font-semibold">{event.title}</p>
-                <p className="text-xs text-slate-500">
+                <p className="font-semibold text-ink">{event.title}</p>
+                <p className="text-xs text-ink/60">
                   {formatDayHeading(event.dateISO)}
                   {event.hasTime ? ` ${formatTime(event.dateISO)}` : ""}
                 </p>
@@ -61,7 +61,7 @@ export default function TripMap({ events }: TripMapProps) {
                   href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.title)}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-1 inline-block text-sky-600 underline underline-offset-2"
+                  className="mt-1 inline-block text-accent underline underline-offset-2"
                 >
                   Googleマップで開く
                 </a>

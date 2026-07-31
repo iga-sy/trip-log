@@ -13,13 +13,13 @@ export default function Hero({ tripData }: HeroProps) {
   return (
     <header
       className={`relative flex h-[60vh] min-h-[360px] items-end justify-center bg-cover bg-center ${
-        heroImage ? "" : "bg-gradient-to-br from-sky-400 via-emerald-300 to-amber-200"
+        heroImage ? "" : "bg-gradient-to-br from-accent/70 via-accent/40 to-base"
       }`}
       style={heroImage ? { backgroundImage: `url(${import.meta.env.BASE_URL}${heroImage})` } : undefined}
     >
       {heroImage && <div className="absolute inset-0 bg-black/40" />}
       <div
-        className={`relative z-10 px-6 pb-10 text-center ${heroImage ? "text-white" : "text-slate-900"}`}
+        className={`relative z-10 px-6 pb-10 text-center ${heroImage ? "text-white" : "text-ink"}`}
       >
         <h1 className="text-3xl font-bold tracking-wide sm:text-4xl">{tripTitle}</h1>
         {firstDate && (

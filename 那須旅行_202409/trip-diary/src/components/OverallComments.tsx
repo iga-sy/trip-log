@@ -15,9 +15,9 @@ export default function OverallComments({ comments }: OverallCommentsProps) {
       <ul className="space-y-4">
         {comments.map((comment, index) => (
           <li key={`${comment.name}-${index}`} className="rounded-lg bg-white p-4 shadow-sm">
-            <p className="mb-1 text-sm font-semibold text-slate-700">{comment.name}</p>
+            <p className="mb-1 text-sm font-semibold text-ink">{comment.name}</p>
             {comment.text && (
-              <p className="whitespace-pre-wrap text-sm text-slate-600">{comment.text}</p>
+              <p className="whitespace-pre-wrap text-sm text-ink/70">{comment.text}</p>
             )}
             {comment.photos.length > 0 && (
               <div className="mt-3 flex gap-2 overflow-x-auto">

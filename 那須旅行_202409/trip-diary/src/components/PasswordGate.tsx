@@ -78,33 +78,33 @@ export default function PasswordGate({ onUnlock }: PasswordGateProps) {
 
   if (checking) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <p className="text-slate-400">読み込み中...</p>
+      <div className="flex min-h-screen items-center justify-center bg-base">
+        <p className="text-ink/40">読み込み中...</p>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-sky-400 via-emerald-300 to-amber-200 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-base via-base to-accent/20 px-4">
       <form
         onSubmit={handleSubmit}
         className="w-full max-w-sm rounded-2xl bg-white/90 p-8 shadow-xl backdrop-blur"
       >
-        <h1 className="mb-1 text-center text-2xl font-bold text-slate-800">旅行のしおり</h1>
-        <p className="mb-6 text-center text-sm text-slate-500">合言葉を入力してください</p>
+        <h1 className="mb-1 text-center text-2xl font-bold text-ink">旅行のしおり</h1>
+        <p className="mb-6 text-center text-sm text-ink/60">合言葉を入力してください</p>
         <input
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="パスワード"
           autoFocus
-          className="mb-3 w-full rounded-lg border border-slate-300 px-4 py-2 text-center focus:border-sky-500 focus:outline-none"
+          className="mb-3 w-full rounded-lg border border-ink/20 px-4 py-2 text-center focus:border-accent focus:outline-none"
         />
         {error && <p className="mb-3 text-center text-sm text-red-500">{error}</p>}
         <button
           type="submit"
           disabled={submitting || password.length === 0}
-          className="w-full rounded-lg bg-sky-600 px-4 py-2 font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+          className="w-full rounded-lg bg-accent px-4 py-2 font-medium text-white hover:bg-accent/90 disabled:opacity-50"
         >
           {submitting ? "確認中..." : "開く"}
         </button>

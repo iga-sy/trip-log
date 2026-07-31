@@ -25,10 +25,10 @@ export default function Timeline({ events }: TimelineProps) {
       <div className="space-y-10">
         {[...groups.entries()].map(([key, dayEvents]) => (
           <div key={key}>
-            <h3 className="mb-4 text-lg font-semibold text-slate-700">
+            <h3 className="mb-4 text-lg font-semibold text-ink/80">
               {formatDayHeading(dayEvents[0].dateISO)}
             </h3>
-            <ol className="relative ml-3 space-y-6 border-l-2 border-slate-200 pl-6">
+            <ol className="relative ml-3 space-y-6 border-l-2 border-accent/20 pl-6">
               {dayEvents.map((event) => (
                 <TimelineItem key={event.id} event={event} />
               ))}
