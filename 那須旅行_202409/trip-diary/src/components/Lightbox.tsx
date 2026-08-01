@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import type { Photo } from "./PhotoGrid";
 
 interface LightboxProps {
@@ -12,9 +13,9 @@ export default function Lightbox({ photos, index, onClose, onNavigate }: Lightbo
   const goPrev = () => onNavigate((index - 1 + photos.length) % photos.length);
   const goNext = () => onNavigate((index + 1) % photos.length);
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black p-4"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -62,6 +63,7 @@ export default function Lightbox({ photos, index, onClose, onNavigate }: Lightbo
           ›
         </button>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }

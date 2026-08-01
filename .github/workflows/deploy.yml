@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "0 21 * * *" # 毎日06:00 JST（UTC 21:00）にNotionの最新内容を反映
+    - cron: "0 * * * *" # 毎時0分にNotionの最新内容を反映
   workflow_dispatch: {}
 
 permissions:
